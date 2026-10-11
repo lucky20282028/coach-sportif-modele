@@ -1,0 +1,54 @@
+name: Diagnostic
+
+# Vérifie toute l'installation (réglages, secrets, Cloudflare, page, horloge, workflows,
+# sources, réveil du coach, échéances) et écrit etat/diagnostic.json, que Claude lit.
+# À la demande, et chaque lundi matin.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TZ: Europe/Paris
+      SECRETS: >-
+        {"CLOUDFLARE_API_TOKEN": ${{ (secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER) != '' }},
+         "JETON_GITHUB": ${{ (secrets.JETON_GITHUB || secrets.JETON_ACTUALISER) != '' }},
+         "PAGE_KEY": ${{ secrets.PAGE_KEY != '' }},
+         "GARMIN_TOKENS": ${{ secrets.GARMIN_TOKENS != '' }},
+         "GARMIN_EMAIL": ${{ secrets.GARMIN_EMAIL != '' }},
+         "GARMIN_MOT_DE_PASSE": ${{ secrets.GARMIN_MOT_DE_PASSE != '' }},
+         "WITHINGS_ENV": ${{ secrets.WITHINGS_ENV != '' }},
+         "WITHINGS_CLE": ${{ (secrets.WITHINGS_CLE || secrets.WITHING_CLE) != '' }},
+         "STRAVA_CLIENT_ID": ${{ secrets.STRAVA_CLIENT_ID != '' }},
+         "STRAVA_CLIENT_SECRET": ${{ secrets.STRAVA_CLIENT_SECRET != '' }},
+         "COACH_REAGIR_JETON": ${{ secrets.COACH_REAGIR_JETON != '' }}}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Diagnostic
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node outils/diagnostic.mjs
+          git add etat/diagnostic.json
+          git diff --cached --quiet && exit 0
+          git -c user.name=coach-diagnostic -c user.email=coach-diagnostic@users.noreply.github.com commit -q -m "Diagnostic $(date '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3 4 5 6; do git pull --rebase --quiet && git push -q && exit 0; git rebase --abort 2>/dev/null; sleep $((i * 5)); done
+          exit 1

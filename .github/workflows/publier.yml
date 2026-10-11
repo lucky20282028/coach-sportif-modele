@@ -1,0 +1,110 @@
+name: Publier la page iPhone
+
+# Se déclenche dès qu'une tâche du coach pousse de nouvelles données de page.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "functions/**"
+      - "commun/**"
+      - "collecte/cloudflare.mjs"
+      - "collecte/webpush.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publication
+  cancel-in-progress: true
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main   # le dernier état, pas celui du moment où la tâche a été mise en file
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Vérifier les formules, les écrans et les retours
+        run: |
+          (cd app && node bench.js >/dev/null && node bench-formules.js && node bench-v2.js && node bench-depuis-plan.js && node bench-analyses.js && node bench-lot1.js)
+          node commun/banc-retour.mjs && node commun/banc-fonctions.mjs && node commun/banc-sante.mjs
+          node collecte/banc-webpush.mjs && node collecte/banc-notifs.mjs && node collecte/banc-reagir.mjs && node horloge/banc-horloge.mjs
+
+      - name: Construire la page chiffrée
+        working-directory: app
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          # Sans la clé existante, build.js en inventerait une nouvelle et
+          # l'icône sur l'écran d'accueil cesserait de fonctionner.
+          if [ -z "$PAGE_KEY" ]; then echo "Secret PAGE_KEY absent : publication annulée (installation pas finie)." | tee /tmp/deploy.log; exit 1; fi
+          # Empreinte de la clé enregistrée sur l'écran d'accueil (pas la clé elle-même),
+          # notée dans reglages/installation.json par l'installation.
+          attendu=$(node ../commun/installation.mjs empreinte_cle) || { echo "Installation pas finie : empreinte de la clé inconnue (workflow « Installation »)." | tee /tmp/deploy.log; exit 1; }
+          if [ "$(printf '%s' "$PAGE_KEY" | sha256sum | cut -d' ' -f1)" != "$attendu" ]; then
+            echo "PAGE_KEY ne correspond pas à la clé de la page iPhone : publication annulée (le lien de l'écran d'accueil cesserait de marcher)." | tee /tmp/deploy.log; exit 1
+          fi
+          node build.js donnees.js ../site/index.html "$PAGE_KEY" | grep -v "clé :"
+
+
+      # Projet Pages, stockage des retours et secrets (empreinte du jeton,
+      # jeton GitHub du bouton Actualiser) : créés ou mis à jour à chaque fois.
+      - name: Préparer Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+          JETON_ACTUALISER: ${{ secrets.JETON_ACTUALISER }}
+          JETON_GITHUB: ${{ secrets.JETON_GITHUB }}
+          WITHINGS_ENV: ${{ secrets.WITHINGS_ENV }}
+        run: node collecte/cloudflare.mjs preparer
+
+      - name: Mettre en ligne sur Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CF_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 pages deploy site --project-name "$(node commun/installation.mjs projet)" --branch main \
+            --commit-dirty=true --commit-message "coach $(date '+%d/%m %H:%M')" 2>&1 | tee /tmp/deploy.log
+          echo "En ligne : $CF_URL"
+
+      # Le déploiement peut réussir sans que la nouvelle version soit servie (cache,
+      # mauvais projet). On relit v.txt sur l'adresse publique : la version servie
+      # doit être celle qu'on vient de construire.
+      - name: Vérifier la version servie
+        run: |
+          attendu=$(tr -d '[:space:]' < site/v.txt)
+          for i in $(seq 1 12); do
+            vu=$(curl -fsS "$CF_URL/v.txt?t=$(date +%s)" 2>/dev/null | tr -d '[:space:]' || true)
+            if [ "$vu" = "$attendu" ]; then echo "Version servie : $vu"; exit 0; fi
+            sleep 10
+          done
+          echo "Servie : '$vu', construite : '$attendu'" | tee /tmp/deploy.log
+          exit 1
+
+      # Notification « le coach a modifié ta séance » si la séance du jour ou du
+      # lendemain a changé depuis la publication précédente.
+      - name: Séance modifiée ?
+        continue-on-error: true
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/notifier.mjs modif
+
+      # Les journaux d'Actions ne sont pas lisibles depuis les sessions du coach.
+      # La fin du journal devient une annotation, lisible par l'API sans les journaux bruts.
+      - name: Résumer l'échec
+        if: failure()
+        run: |
+          msg=$(tail -n 25 /tmp/deploy.log 2>/dev/null | sed -E 's/(github_pat_|ghp_|nfp_)[A-Za-z0-9_]+/\1***/g' | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Cloudflare::${msg}"

@@ -1,0 +1,63 @@
+name: Fusionner une réaction du coach
+
+# La routine « Coach · Réagir » (créée sur claude.ai) travaille sur une branche
+# claude/… et ne peut pas toujours pousser sur main. Dès qu'elle pousse sa branche,
+# on la fusionne dans main, on régénère la page et on la publie, puis on efface
+# la branche. Journal et carnet : les deux versions sont gardées (fusion « union »).
+# Fichiers générés (donnees.js, synthèse, mémoire, historique) : régénérés après.
+on:
+  push:
+    branches: ["claude/**"]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  fusion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Europe/Paris
+      BRANCHE: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Fusionner dans main
+        run: |
+          git config user.name "coach-fusion"
+          git config user.email "coach-fusion@users.noreply.github.com"
+          # Fichiers générés : on garde main pendant la fusion, on régénère juste après.
+          git config merge.garder.driver true
+          printf '%s\n' 'journal/*.md merge=union' 'carnet.md merge=union' \
+            'app/donnees.js merge=garder' 'app/entrees/memoire.json merge=garder' \
+            'app/entrees/historique.json merge=garder' 'donnees/synthese.json merge=garder' >> .git/info/attributes
+          git fetch -q origin "$BRANCHE"
+          if ! git merge --no-edit -X theirs "origin/$BRANCHE" -m "Réaction du coach fusionnée ($BRANCHE)"; then
+            git merge --abort; echo "::error title=Fusion::La branche $BRANCHE ne se fusionne pas proprement dans main."; exit 1
+          fi
+          (cd app && node depuis-plan.js && node bench-depuis-plan.js >/dev/null && node bench-formules.js >/dev/null && node bench-v2.js >/dev/null && node bench-analyses.js >/dev/null && node bench-lot1.js >/dev/null)
+          git add app/donnees.js app/entrees/historique.json app/entrees/memoire.json donnees/synthese.json
+          git diff --cached --quiet || git commit -q -m "Page régénérée après la réaction du coach"
+          for i in 1 2 3; do
+            git push -q origin main && break
+            git pull -q --rebase origin main || { git rebase --abort; exit 1; }
+            sleep 5
+          done
+          git push -q origin --delete "$BRANCHE" || true
+
+      - name: Publier la page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/publier.yml/dispatches" -f ref=main

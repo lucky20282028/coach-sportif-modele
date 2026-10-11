@@ -1,0 +1,174 @@
+name: Installation
+
+# Installe (ou répare) le coach de cet athlète : nom de page unique, projet Cloudflare,
+# stockage, variables des fonctions, page de la clé tant que PAGE_KEY manque, puis
+# publication, horloge, première collecte et diagnostic (etat/diagnostic.json).
+# Se relance sans risque autant de fois que nécessaire : rien n'est recréé deux fois,
+# et la clé de la page n'est jamais remplacée sans « nouvelle_cle ».
+on:
+  workflow_dispatch:
+    inputs:
+      nouvelle_cle:
+        description: "Remplacer la clé de la page (le lien de l'écran d'accueil changera)"
+        type: boolean
+        default: false
+      essai:
+        description: "Installation d'essai jetable sur Cloudflare (ne touche pas à la vraie page), effacée à la fin"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Europe/Paris
+      ESSAI: ${{ inputs.essai }}
+      SECRETS: >-
+        {"CLOUDFLARE_API_TOKEN": ${{ (secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER) != '' }},
+         "JETON_GITHUB": ${{ (secrets.JETON_GITHUB || secrets.JETON_ACTUALISER) != '' }},
+         "PAGE_KEY": ${{ secrets.PAGE_KEY != '' }},
+         "GARMIN_TOKENS": ${{ secrets.GARMIN_TOKENS != '' }},
+         "GARMIN_EMAIL": ${{ secrets.GARMIN_EMAIL != '' }},
+         "GARMIN_MOT_DE_PASSE": ${{ secrets.GARMIN_MOT_DE_PASSE != '' }},
+         "WITHINGS_ENV": ${{ secrets.WITHINGS_ENV != '' }},
+         "WITHINGS_CLE": ${{ (secrets.WITHINGS_CLE || secrets.WITHING_CLE) != '' }},
+         "STRAVA_CLIENT_ID": ${{ secrets.STRAVA_CLIENT_ID != '' }},
+         "STRAVA_CLIENT_SECRET": ${{ secrets.STRAVA_CLIENT_SECRET != '' }},
+         "COACH_REAGIR_JETON": ${{ secrets.COACH_REAGIR_JETON != '' }}}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Vérifier les réglages et les secrets
+        run: |
+          set -o pipefail
+          node commun/athlete.cjs verifier 2>&1 | tee /tmp/install.log
+          node -e '
+            const s = JSON.parse(process.env.SECRETS), m = ["CLOUDFLARE_API_TOKEN", "JETON_GITHUB"].filter(k => !s[k]);
+            if (m.length) { console.log("Secrets manquants : " + m.join(", ") + " (GitHub › Settings › Secrets and variables › Actions)."); process.exit(1); }
+            console.log("Secrets de base présents.");' 2>&1 | tee -a /tmp/install.log
+
+      - name: Nom de la page
+        if: ${{ !inputs.essai }}
+        run: node commun/installation.mjs creer | tee -a /tmp/install.log
+
+      - name: "Essai : noms jetables"
+        if: ${{ inputs.essai }}
+        run: |
+          echo "CF_PROJET=coach-essai-$(openssl rand -hex 3)" >> "$GITHUB_ENV"
+          echo "CF_KV=coach-essai-retours" >> "$GITHUB_ENV"
+
+      - name: Cloudflare (projet, stockage, variables des fonctions)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          PAGE_KEY: ${{ !inputs.essai && secrets.PAGE_KEY || '' }}
+          # En essai, aucun jeton GitHub : les fonctions de la page d'essai ne lancent rien.
+          JETON_GITHUB: ${{ !inputs.essai && (secrets.JETON_GITHUB || secrets.JETON_ACTUALISER) || '' }}
+          WITHINGS_ENV: ${{ !inputs.essai && secrets.WITHINGS_ENV || '' }}
+          STRAVA_CLIENT_ID: ${{ !inputs.essai && secrets.STRAVA_CLIENT_ID || '' }}
+          STRAVA_CLIENT_SECRET: ${{ !inputs.essai && secrets.STRAVA_CLIENT_SECRET || '' }}
+        run: |
+          set -o pipefail
+          node collecte/cloudflare.mjs preparer 2>&1 | tee -a /tmp/install.log
+
+      - name: Noter l'adresse de la page
+        if: ${{ !inputs.essai }}
+        run: node commun/installation.mjs adresse= "$CF_URL" | tee -a /tmp/install.log
+
+      - name: Clé de la page
+        id: cle
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+          NOUVELLE_CLE: ${{ inputs.nouvelle_cle }}
+        run: |
+          set -o pipefail
+          if [ -z "$PAGE_KEY" ] || [ "$ESSAI" = "true" ]; then
+            echo "etat=attendue" >> "$GITHUB_OUTPUT"
+            echo "Clé pas encore collée : on publie la page de la clé à $CF_URL" | tee -a /tmp/install.log
+            exit 0
+          fi
+          node commun/installation.mjs noter-cle 2>&1 | tee -a /tmp/install.log
+          echo "etat=ok" >> "$GITHUB_OUTPUT"
+
+      - name: Publier la page de la clé
+        if: steps.cle.outputs.etat == 'attendue'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CF_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          node outils/page-cle.mjs site-cle "$GITHUB_REPOSITORY" "$CF_URL" | tee -a /tmp/install.log
+          projet="${CF_PROJET:-$(node commun/installation.mjs projet)}"
+          npx --yes wrangler@4 pages deploy site-cle --project-name "$projet" --branch main --commit-dirty=true 2>&1 | tail -n 15 | tee -a /tmp/install.log
+          for i in $(seq 1 12); do
+            v=$(curl -fsS "$CF_URL/v.txt?t=$(date +%s)" 2>/dev/null | tr -d '[:space:]' || true)
+            [ "$v" = "installation" ] && { echo "Page de la clé en ligne : $CF_URL" | tee -a /tmp/install.log; exit 0; }
+            sleep 10
+          done
+          echo "La page de la clé n'est pas servie à $CF_URL" | tee -a /tmp/install.log; exit 1
+
+      - name: "Essai : effacer le projet jetable"
+        if: ${{ always() && inputs.essai }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/cloudflare.mjs supprimer-essai | tee -a /tmp/install.log
+
+      - name: Enregistrer l'installation
+        if: ${{ !inputs.essai }}
+        run: |
+          git config user.name "coach-installation"
+          git config user.email "coach-installation@users.noreply.github.com"
+          # Les consignes du coach nomment ce dépôt (modèle : « __DEPOT__ »).
+          for f in $(grep -rl "__DEPOT__" COACH.md CLAUDE.md README.md taches 2>/dev/null); do sed -i "s#__DEPOT__#$GITHUB_REPOSITORY#g" "$f"; git add "$f"; done
+          git add reglages/installation.json
+          if git diff --cached --quiet; then echo "Installation déjà enregistrée."; exit 0; fi
+          git commit -q -m "Installation : page $(node commun/installation.mjs projet)"
+          for i in 1 2 3 4 5 6; do git pull --rebase --quiet && git push -q && exit 0; git rebase --abort 2>/dev/null; sleep $((i * 5)); done
+          exit 1
+
+      - name: Publier la page, l'horloge, première collecte
+        if: ${{ !inputs.essai && steps.cle.outputs.etat == 'ok' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          lancer() { gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/$1/dispatches" -f ref=main "${@:2}" && echo "lancé : $1 ${*:2}" | tee -a /tmp/install.log; }
+          lancer publier.yml
+          lancer horloge.yml
+          eval "$(node commun/athlete.cjs sources | sed 's/^/src_/')"
+          # L'année passée de la montre, une seule fois (agenda, objectifs, moteur).
+          if [ "$src_garmin" = "true" ] && [ ! -f donnees/garmin/activites.json ]; then lancer historique.yml; fi
+          lancer collecte.yml
+
+      - name: Diagnostic
+        if: ${{ always() && !inputs.essai }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node outils/diagnostic.mjs | tee -a /tmp/install.log || true
+          git add etat/diagnostic.json
+          git diff --cached --quiet && exit 0
+          git -c user.name=coach-installation -c user.email=coach-installation@users.noreply.github.com commit -q -m "Diagnostic après installation"
+          for i in 1 2 3 4 5 6; do git pull --rebase --quiet && git push -q && exit 0; git rebase --abort 2>/dev/null; sleep $((i * 5)); done
+
+      # Les journaux d'Actions ne se lisent pas depuis Claude : la fin devient une annotation.
+      - name: Résumer l'échec
+        if: failure()
+        run: |
+          msg=$(tail -n 25 /tmp/install.log 2>/dev/null | sed -E 's/(github_pat_|ghp_)[A-Za-z0-9_]+/\1***/g' | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Installation::${msg}"

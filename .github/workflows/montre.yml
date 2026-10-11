@@ -1,0 +1,58 @@
+name: Programmer la montre
+
+# Une tâche du coach écrit ses demandes dans montre/a-faire.json
+# (liste de {"outil": "...", "args": {...}}, mêmes outils que le connecteur Garmin).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "montre/a-faire.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  montre:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main   # le dernier état, pas celui du moment où la tâche a été mise en file
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Installer les bibliothèques
+        run: |
+          pip install --quiet \
+            "garmin-mcp @ git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7"
+
+      - name: Exécuter les demandes
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_MOT_DE_PASSE: ${{ secrets.GARMIN_MOT_DE_PASSE }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          set -o pipefail
+          python collecte/garmin.py montre 2>&1 | tail -n 40 | tee montre/journal.log
+
+      - name: Enregistrer le résultat
+        if: always()
+        run: |
+          git config user.name "coach-montre"
+          git config user.email "coach-montre@users.noreply.github.com"
+          git add montre
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Montre : demandes exécutées"
+          for i in 1 2 3; do git pull --rebase --quiet && git push && exit 0; sleep 5; done
+          exit 1

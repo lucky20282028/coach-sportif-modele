@@ -1,0 +1,57 @@
+{
+ "version": 1,
+ "prenom": "",
+ "lieu": null,
+ "sources": {
+  "garmin": false,
+  "withings": false,
+  "apple_sante": false,
+  "strava": false
+ },
+ "materiel": {
+  "montre": "ta montre",
+  "nuit": null,
+  "nuit_seule": null,
+  "programmer_montre": false
+ },
+ "cible": {
+  "course": 2,
+  "renfo": 1
+ },
+ "fc_moteur": [
+  150,
+  140
+ ],
+ "allures": null,
+ "plafond_chaleur": 155,
+ "objectifs": {
+  "regularite": {
+   "rang": 1,
+   "texte": "progresser en course à pied en étant régulier"
+  },
+  "ventre": null,
+  "reprise": null
+ },
+ "renfo_pourquoi": "Le renforcement protège tes articulations et ta posture. Court, mais non négociable.",
+ "checkin": {
+  "question": "Une douleur ou une raideur ?",
+  "rien": "rien à signaler",
+  "zones": [
+   {
+    "v": "jambes",
+    "l": "Jambes, genoux",
+    "nom": "aux jambes ou aux genoux"
+   },
+   {
+    "v": "dos",
+    "l": "Dos",
+    "nom": "au dos"
+   },
+   {
+    "v": "ailleurs",
+    "l": "Ailleurs",
+    "nom": ""
+   }
+  ]
+ }
+}

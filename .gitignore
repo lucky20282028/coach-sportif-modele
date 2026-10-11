@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+.wrangler/
+etat/.*-neuf.json
+# Page construite par GitHub à chaque publication : jamais suivie dans le dépôt
+site/

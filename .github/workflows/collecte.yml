@@ -1,0 +1,260 @@
+name: Collecte Garmin et Withings
+
+# GitHub ne connaît que l'heure UTC.
+# 4h45 UTC = 6h45 à Paris en été, 5h45 en hiver ; 18h15 UTC = 20h15 / 19h15.
+# GitHub peut retarder un déclenchement planifié de quelques minutes à une demi-heure.
+on:
+  schedule:
+    - cron: "45 4 * * *"
+    - cron: "15 18 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date (AAAA-MM-JJ) ou plage (AAAA-MM-JJ:AAAA-MM-JJ), vide = aujourd'hui"
+        required: false
+      raison:
+        description: "Qui demande : note (message écrit sur la page), actualiser (bouton), vide = tâche ou à la main"
+        required: false
+
+permissions:
+  contents: write
+  actions: write   # pour lancer la publication de la page après la collecte
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  collecte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Europe/Paris
+      WITHINGS_ACTIF: ${{ secrets.WITHINGS_ENV != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main   # le dernier état, pas celui du moment où la tâche a été mise en file
+
+      # Les sources que l'athlète utilise (reglages/athlete.json) : une source absente
+      # n'est ni collectée ni signalée en échec.
+      - name: Sources de l'athlète
+        id: src
+        run: node commun/athlete.cjs sources | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Installer les bibliothèques
+        run: |
+          pip install --quiet \
+            "garmin-mcp @ git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7" \
+            requests cryptography
+
+      - name: Garmin
+        id: garmin
+        if: steps.src.outputs.garmin == 'true'
+        continue-on-error: true
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_MOT_DE_PASSE: ${{ secrets.GARMIN_MOT_DE_PASSE }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          mkdir -p etat
+          set -o pipefail
+          python collecte/garmin.py collecte ${{ inputs.date }} 2>&1 | tail -n 40 | tee etat/garmin.log
+
+      - name: Météo du créneau
+        continue-on-error: true
+        run: python collecte/meteo.py 2>&1 | tail -n 5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Withings, jeton reconnecté depuis la page ?
+        if: env.WITHINGS_ACTIF == 'true' && steps.src.outputs.withings == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/withings-kv.mjs prendre
+
+      - name: Withings
+        id: withings
+        continue-on-error: true
+        if: env.WITHINGS_ACTIF == 'true' && steps.src.outputs.withings == 'true'
+        env:
+          WITHINGS_CLE: ${{ secrets.WITHINGS_CLE || secrets.WITHING_CLE }}
+          WITHINGS_ENV: ${{ secrets.WITHINGS_ENV }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          mkdir -p etat
+          set -o pipefail
+          python collecte/withings.py ${{ inputs.date }} 2>&1 | tail -n 40 | tee etat/withings.log
+
+      - name: Withings, jeton de la page consommé
+        if: ${{ steps.withings.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/withings-kv.mjs effacer
+
+      - name: Strava, jeton connecté depuis la page ?
+        if: steps.src.outputs.strava == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/jeton-kv.mjs strava prendre
+
+      - name: Strava
+        id: strava
+        if: steps.src.outputs.strava == 'true'
+        continue-on-error: true
+        env:
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          mkdir -p etat
+          set -o pipefail
+          # Premier passage : on rattrape l'année (agenda, objectifs, moteur).
+          mode=collecte; [ -f donnees/strava/activites.json ] || mode=historique
+          python collecte/strava.py $mode 2>&1 | tail -n 40 | tee etat/strava.log
+
+      - name: Strava, jeton de la page consommé
+        if: ${{ steps.strava.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/jeton-kv.mjs strava effacer
+
+      - name: Apple Santé
+        id: sante
+        if: steps.src.outputs.sante == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: |
+          mkdir -p etat
+          set -o pipefail
+          node collecte/sante.mjs lire 2>&1 | tail -n 20 | tee etat/sante.log
+
+      - name: Retours de la page
+        id: retours
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: |
+          mkdir -p etat
+          set -o pipefail
+          node collecte/retours.mjs lire 2>&1 | tail -n 30 | tee etat/retours.log
+
+      - name: Enregistrer dans le dépôt
+        id: enregistrer
+        if: always()
+        env:
+          G: ${{ steps.garmin.outcome }}
+          W: ${{ steps.withings.outcome }}
+          S: ${{ steps.strava.outcome }}
+          H: ${{ steps.sante.outcome }}
+          R: ${{ steps.retours.outcome }}
+          A_GARMIN: ${{ secrets.GARMIN_TOKENS != '' }}
+          A_WENV: ${{ secrets.WITHINGS_ENV != '' }}
+          A_WCLE: ${{ (secrets.WITHINGS_CLE || secrets.WITHING_CLE) != '' }}
+          A_PAGE: ${{ secrets.PAGE_KEY != '' }}
+          A_CF: ${{ (secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER) != '' }}
+        run: |
+          mkdir -p etat
+          # Bilan lisible par le coach (aucune valeur secrète, seulement leur présence).
+          printf '{"collecte":"%s","garmin":"%s","withings":"%s","strava":"%s","sante":"%s","retours":"%s","secrets_presents":{"GARMIN_TOKENS":%s,"WITHINGS_ENV":%s,"WITHINGS_CLE":%s,"PAGE_KEY":%s,"CLOUDFLARE_API_TOKEN":%s}}\n' \
+            "$(date '+%Y-%m-%d %H:%M')" "${G:-ignoré}" "${W:-ignoré}" "${S:-ignoré}" "${H:-ignoré}" "$R" "$A_GARMIN" "$A_WENV" "$A_WCLE" "$A_PAGE" "$A_CF" > etat/derniere-collecte.json
+          git config user.name "coach-collecte"
+          git config user.email "coach-collecte@users.noreply.github.com"
+          git add -A donnees etat carnet.md
+          if git diff --cached --quiet; then echo "Rien de nouveau."; exit 0; fi
+          git commit -m "Collecte $(date '+%Y-%m-%d %H:%M')"
+          # Le coach pousse parfois au même moment (réaction, débrief) : carnet et fichiers
+          # ajoutés ligne à ligne se fusionnent en gardant les deux côtés, et on réessaie
+          # plus longtemps. Fichiers générés : ceux de main, ils sont régénérés plus bas.
+          git config merge.garder.driver true
+          printf '%s\n' 'carnet.md merge=union' 'donnees/**/*.jsonl merge=union' 'journal/*.md merge=union' \
+            'app/donnees.js merge=garder' 'donnees/synthese.json merge=garder' 'app/entrees/memoire.json merge=garder' >> .git/info/attributes
+          for i in 1 2 3 4 5 6; do
+            git pull --rebase --quiet || { git rebase --abort 2>/dev/null; git pull --no-rebase --no-edit --quiet || { git merge --abort 2>/dev/null; sleep $((i * 5)); continue; }; }
+            git push && exit 0
+            sleep $((i * 5))
+          done
+          echo "::error title=Enregistrer::Impossible de pousser la collecte après 6 essais."
+          exit 1
+
+      # Notification si Garmin ou Withings échoue deux collectes de suite.
+      - name: Montres déconnectées ?
+        if: always()
+        continue-on-error: true
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/notifier.mjs montre
+
+      # Seulement une fois le carnet poussé : sinon un retour pourrait se perdre.
+      - name: Effacer de Cloudflare les retours recopiés
+        if: ${{ steps.enregistrer.outcome == 'success' && steps.retours.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/retours.mjs effacer
+
+      - name: Effacer de Cloudflare les données Santé recopiées
+        if: ${{ steps.enregistrer.outcome == 'success' && steps.sante.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/sante.mjs effacer
+
+      # Un message, une alerte ou un appui sur Actualiser : si quelque chose d'important
+      # est arrivé depuis le mot du coach, on le réveille (routine « Coach · Réagir »,
+      # taches/reagir.md). Jamais juste avant une tâche planifiée qui relira tout.
+      - name: Réveiller le coach ?
+        if: ${{ steps.enregistrer.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          RAISON: ${{ inputs.raison }}
+          COACH_REAGIR_JETON: ${{ secrets.COACH_REAGIR_JETON }}
+        run: |
+          git pull --rebase --quiet || true
+          (cd app && node depuis-plan.js >/dev/null)
+          node collecte/reagir.mjs
+          git checkout -q -- app donnees
+          git add etat/reaction.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -q -m "Réveil du coach $(date '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3 4 5 6; do git pull --rebase --quiet && git push -q && exit 0; git rebase --abort 2>/dev/null; sleep $((i * 5)); done
+          exit 1
+
+      # La page se régénère à chaque collecte : séances cochées par la montre,
+      # courbes, retours. Un push fait par GitHub Actions ne déclenche pas la
+      # publication tout seul : on la lance explicitement.
+      - name: Régénérer et publier la page
+        if: ${{ steps.enregistrer.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in 1 2 3; do
+            git pull --rebase --quiet || { git rebase --abort 2>/dev/null; git fetch -q; git reset -q --hard origin/main; }
+            (cd app && node depuis-plan.js && node bench-depuis-plan.js >/dev/null && node bench-formules.js >/dev/null && node bench-v2.js >/dev/null && node bench-analyses.js >/dev/null && node bench-lot1.js >/dev/null) || exit 1
+            git add app/donnees.js app/entrees/historique.json app/entrees/memoire.json donnees/synthese.json
+            if git diff --cached --quiet; then break; fi
+            git commit -q -m "Page régénérée après la collecte $(date '+%Y-%m-%d %H:%M')"
+            if git push -q; then break; fi
+            git reset -q --hard HEAD~1; sleep 5
+          done
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/publier.yml/dispatches" -f ref=main
+
+      - name: Signaler un échec de source
+        if: ${{ steps.garmin.outcome == 'failure' || steps.withings.outcome == 'failure' || steps.strava.outcome == 'failure' || steps.sante.outcome == 'failure' }}
+        run: |
+          echo "Garmin : ${{ steps.garmin.outcome }} · Withings : ${{ steps.withings.outcome }} · Strava : ${{ steps.strava.outcome }} · Apple Santé : ${{ steps.sante.outcome }}"
+          exit 1

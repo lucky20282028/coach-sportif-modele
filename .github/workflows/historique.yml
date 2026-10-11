@@ -1,0 +1,62 @@
+name: Rattraper l'historique Garmin
+
+# Lancement manuel : récupère toutes les activités des N derniers jours et
+# analyse chaque sortie de course km par km (FIT d'origine de la montre).
+# La collecte du quotidien ne traite ensuite que les nouvelles sorties.
+on:
+  workflow_dispatch:
+    inputs:
+      jours:
+        description: "Nombre de jours à rattraper"
+        required: false
+        default: "365"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  historique:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main   # le dernier état, pas celui du moment où la tâche a été mise en file
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Installer les bibliothèques
+        run: |
+          pip install --quiet \
+            "garmin-mcp @ git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7" \
+            requests cryptography
+      - name: Rattraper
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_MOT_DE_PASSE: ${{ secrets.GARMIN_MOT_DE_PASSE }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          mkdir -p etat
+          set -o pipefail
+          python collecte/garmin.py historique "${{ inputs.jours }}" 2>&1 | tail -n 30 | tee etat/historique.log
+      - name: Enregistrer et relancer la page
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "coach-collecte"
+          git config user.email "coach-collecte@users.noreply.github.com"
+          git add -A donnees etat
+          git diff --cached --quiet && exit 0
+          git commit -q -m "Historique Garmin rattrapé ($(date '+%Y-%m-%d %H:%M'))"
+          for i in 1 2 3; do git pull --rebase --quiet && git push -q && break; sleep 5; done
+          # La collecte régénère la page avec l'historique et la publie.
+          gh api -X POST "repos/${{ github.repository }}/actions/workflows/collecte.yml/dispatches" -f ref=main

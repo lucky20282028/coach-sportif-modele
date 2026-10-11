@@ -1,0 +1,74 @@
+{
+ "version": 1,
+ "prenom": "Sam",
+ "lieu": null,
+ "sources": {
+  "garmin": true,
+  "withings": true,
+  "apple_sante": false,
+  "strava": "connecteur"
+ },
+ "materiel": {
+  "montre": "ta montre",
+  "nuit": "ton capteur de nuit",
+  "nuit_seule": "le capteur de nuit",
+  "programmer_montre": true
+ },
+ "cible": {
+  "course": 2,
+  "renfo": 1
+ },
+ "fc_moteur": [
+  150,
+  140
+ ],
+ "plafond_chaleur": 155,
+ "objectifs": {
+  "regularite": {
+   "rang": 1,
+   "texte": "progresser en course à pied en étant régulier, sans dossard"
+  },
+  "ventre": {
+   "rang": 2,
+   "texte": "réduire la graisse abdominale et renforcer la sangle"
+  },
+  "reprise": {
+   "rang": 3,
+   "sport": "velo",
+   "nom": "le vélo",
+   "titre": "Reprendre le vélo",
+   "motif": "échographie|v[ée]lo"
+  }
+ },
+ "renfo_pourquoi": "Sangle abdominale : c'est ton objectif n°2, et c'est aussi ce qui protège ton dos. Court, mais non négociable.",
+ "checkin": {
+  "question": "Genou, dos",
+  "rien": "rien au genou ni au dos",
+  "zones": [
+   {
+    "v": "genou",
+    "l": "Genou droit",
+    "nom": "au genou droit",
+    "raideur": "Raideur au genou droit : séance seulement si elle s'estompe en marchant. Si elle revient à l'effort, arrêt et kiné du sport."
+   },
+   {
+    "v": "dos",
+    "l": "Dos, lombaires",
+    "nom": "au dos ou aux lombaires"
+   },
+   {
+    "v": "ailleurs",
+    "l": "Ailleurs",
+    "nom": ""
+   }
+  ]
+ },
+ "allures": {
+  "recup": 400,
+  "facile": 380,
+  "endur": 360,
+  "tempo": 277,
+  "vma": 245,
+  "rapide": 315
+ }
+}

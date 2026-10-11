@@ -1,0 +1,28 @@
+{
+ "meta": {
+  "cycle": 1,
+  "week_in_cycle": 1,
+  "deload": false,
+  "caps": []
+ },
+ "mot": "Ton coach s'installe : ton premier programme arrive dès la fin de l'installation.",
+ "n3": [],
+ "serie": [],
+ "pred": [],
+ "rec": [],
+ "sources": "",
+ "dates": {},
+ "motVu": "2026-10-11T20:07:49.190Z",
+ "motBase": {
+  "d": "2026-10-11",
+  "nuit": null,
+  "acts": [],
+  "checkin": null
+ },
+ "empreinte": {
+  "d": "2026-10-11",
+  "nuit": null,
+  "acts": [],
+  "checkin": null
+ }
+}

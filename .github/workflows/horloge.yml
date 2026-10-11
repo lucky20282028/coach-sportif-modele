@@ -1,0 +1,42 @@
+name: Horloge (Cloudflare)
+
+# Déploie l'horloge du coach : un Worker Cloudflare dont les déclencheurs planifiés
+# sonnent à /api/horloge, qui lance la collecte et les notifications à l'heure
+# (GitHub retarde ses propres tâches planifiées de plusieurs heures). Le Worker ne
+# détient aucun secret.
+on:
+  push:
+    branches: [main]
+    paths: ["horloge/**", "commun/horloge.mjs", "reglages/installation.json", ".github/workflows/horloge.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Vérifier l'horloge
+        run: node horloge/banc-horloge.mjs
+      - name: Déployer le Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: |
+          set -o pipefail
+          export CLOUDFLARE_ACCOUNT_ID=$(node -e 'import("./collecte/cloudflare.mjs").then(m => m.compte()).then(a => console.log(a))')
+          node collecte/cloudflare.mjs sous-domaine
+          nom=$(node commun/installation.mjs horloge); page=$(node commun/installation.mjs adresse)
+          cd horloge
+          # Le Worker reçoit l'adresse de SA page (variable PAGE) : aucun secret.
+          npx --yes wrangler@4 deploy --name "$nom" --var "PAGE:$page" 2>&1 | tee /tmp/horloge.log
+      - name: Résumer l'échec
+        if: failure()
+        run: |
+          msg=$(tail -n 20 /tmp/horloge.log 2>/dev/null | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Horloge::${msg}"

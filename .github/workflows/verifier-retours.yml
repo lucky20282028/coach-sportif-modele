@@ -1,0 +1,94 @@
+name: Vérifier la page et les retours
+
+# Lancement manuel : vérifie la page publiée sur Cloudflare (en-têtes, version)
+# et envoie un retour « test » avec le vrai jeton, comme le ferait l'iPhone.
+# Le test n'entre jamais dans le carnet : il est effacé tout de suite.
+on:
+  workflow_dispatch:
+    inputs:
+      actualiser:
+        description: "Tester aussi le bouton Actualiser avec le vrai jeton (lance une collecte)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ecriture-depot
+  cancel-in-progress: false
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main   # le dernier état, pas celui du moment où la tâche a été mise en file
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Vérifier
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+          A_JETON: ${{ secrets.JETON_ACTUALISER != '' }}
+          TESTER_ACTUALISER: ${{ inputs.actualiser }}
+        run: |
+          mkdir -p etat
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { jetonDe } from "./commun/retour.mjs";
+            import { adresse, kv } from "./collecte/cloudflare.mjs";
+            const base = await adresse();
+            const jeton = await jetonDe(process.env.PAGE_KEY);
+            const res = { quand:new Date().toISOString(), adresse:base };
+            const page = await fetch(base + "/");
+            const html = await page.text();
+            res.page = page.status;
+            res.csp = !!page.headers.get("content-security-policy");
+            res.page_chiffree = /const CH = "/.test(html);
+            const v = await fetch(base + "/v.txt?" + Date.now());
+            res.version_en_ligne = v.ok ? (await v.text()).trim() : null;
+            const corps = JSON.stringify({ type:"test", d:new Date().toISOString().slice(0, 10), note:"vérification" });
+            const essai = async j => (await fetch(base + "/api/retour", { method:"POST", headers:{ "Content-Type":"application/json", "X-Coach":j }, body:corps })).status;
+            res.retour_sans_jeton = await essai("faux");
+            res.retour_avec_jeton = await essai(jeton);
+            await new Promise(r => setTimeout(r, 3000));
+            const g = await fetch(base + "/api/retour", { headers:{ "X-Coach":jeton } });
+            res.lecture = g.status;
+            const store = await kv();
+            let tests = 0;
+            /* Le stockage KV peut mettre jusqu à une minute à lister une nouvelle clé. */
+            for (let i = 0; i < 8 && !tests; i++) {
+              for (const k of await store.cles("r:")) { const x = await store.lire(k); if (x && x.type === "test") { await store.effacer(k); tests++; } }
+              if (!tests) await new Promise(r => setTimeout(r, 10000));
+            }
+            res.tests_effaces = tests;
+            res.actualiser_sans_jeton = (await fetch(base + "/api/actualiser", { method:"POST", headers:{ "X-Coach":"faux" } })).status;
+            res.secret_jeton_actualiser = process.env.A_JETON === "true";
+            const w = await fetch(base + "/api/withings/debut", { method:"POST", headers:{ "X-Coach":jeton } });
+            res.withings_debut = w.status;
+            if (w.ok) { const u = new URL((await w.json()).url); res.withings_autorisation = u.host; res.withings_redirection = u.searchParams.get("redirect_uri"); }
+            if (process.env.TESTER_ACTUALISER === "true") {
+              const b = await fetch(base + "/api/actualiser", { method:"POST", headers:{ "X-Coach":jeton } });
+              res.actualiser_avec_jeton = b.status;
+              res.actualiser_reponse = await b.text();
+            }
+            res.verdict = res.page === 200 && res.csp && res.page_chiffree && res.retour_sans_jeton === 401 && res.retour_avec_jeton === 200 &&
+                          res.lecture === 200 && res.tests_effaces >= 1 ? "OK" : "ÉCHEC";
+            fs.writeFileSync("etat/verif-retours.json", JSON.stringify(res, null, 1) + "\n");
+            console.log(JSON.stringify(res));
+            if (res.verdict !== "OK") { console.log("::error title=Vérification::" + JSON.stringify(res)); process.exit(1); }'
+      - name: Enregistrer le verdict
+        if: always()
+        run: |
+          git config user.name "coach-collecte"
+          git config user.email "coach-collecte@users.noreply.github.com"
+          git add etat/verif-retours.json || true
+          git diff --cached --quiet && exit 0
+          git commit -m "Vérification de la page et des retours"
+          for i in 1 2 3; do git pull --rebase --quiet && git push && exit 0; sleep 5; done

@@ -1,0 +1,7 @@
+name = "coach-horloge"
+main = "horloge.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+[triggers]
+crons = ["45 4 * * *", "15 18 * * *", "55 14-21 * * *"]

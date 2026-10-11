@@ -1,0 +1,68 @@
+name: Notifications
+
+# Envoie les notifications de la page (collecte/notifier.mjs) : aucune ne passe par Claude.
+# Toutes les heures de 16h55 à 23h55 (heure d'été ; 15h55 à 22h55 en hiver) :
+# rappel de séance à l'heure choisie (17 h à 21 h), « au lit » vers 23 h.
+# À la demande : type test (bouton de la page), modif, montre.
+on:
+  schedule:
+    - cron: "55 14-21 * * *"
+  workflow_dispatch:
+    inputs:
+      type:
+        description: "horaire, test, modif ou montre"
+        required: false
+        default: "horaire"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notifications
+  cancel-in-progress: false
+
+jobs:
+  notifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Europe/Paris
+      TYPE: ${{ inputs.type || 'horaire' }}
+      PAGE_KEY: ${{ secrets.PAGE_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main   # le dernier état, pas celui du moment où la tâche a été mise en file
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      # Ne lit la montre que s'il y a un rappel de séance à envoyer et une séance qui semble pas faite.
+      - name: Faut-il regarder la montre ?
+        id: besoin
+        if: env.TYPE == 'horaire'
+        run: node collecte/notifier.mjs horaire --besoin
+
+      - uses: actions/setup-python@v6
+        if: steps.besoin.outputs.garmin == '1'
+        with:
+          python-version: "3.12"
+
+      - name: Activités du jour sur la montre
+        if: steps.besoin.outputs.garmin == '1'
+        continue-on-error: true
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_MOT_DE_PASSE: ${{ secrets.GARMIN_MOT_DE_PASSE }}
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          pip install --quiet "garmin-mcp @ git+https://github.com/Taxuspt/garmin_mcp@cfc5d799ab0f165e837f1188a1d093c65838aaf7" requests
+          python collecte/garmin.py activites-jour /tmp/activites.json 2>&1 | tail -n 5
+
+      - name: Envoyer
+        env:
+          ACTIVITES_FICHIER: /tmp/activites.json
+        run: node collecte/notifier.mjs "$TYPE"

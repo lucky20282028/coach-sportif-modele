@@ -1,0 +1,95 @@
+{
+ "genere": "2026-10-11T20:07:49.190Z",
+ "date": "2026-10-11",
+ "nuit": null,
+ "sommeil": {
+  "moyenne_7_nuits": "—",
+  "moyenne_7_nuits_avant": "—",
+  "nuits_sous_6h_sur_les_5_dernieres": 0,
+  "coucher_moyen": null,
+  "nuits_mesurees": 0
+ },
+ "vfc": {
+  "derniere": null,
+  "zone_habituelle": null,
+  "moyenne_3_nuits": null,
+  "moyenne_3_nuits_avant": null,
+  "variation_pct": null
+ },
+ "disponibilite": null,
+ "charge": {
+  "ratio": null,
+  "aigue": null,
+  "chronique": null,
+  "statut": null,
+  "part_aerobie_faible_pct": null
+ },
+ "fc_repos": null,
+ "fc_repos_tendance": null,
+ "checkin": null,
+ "retours_hier_et_aujourdhui": [],
+ "seances_du_jour": [],
+ "derniere_sortie": null,
+ "moteur": {
+  "allure_a_150_derniere": null,
+  "allure_a_150_il_y_a_3_mois": null,
+  "allure_a_140_derniere": null,
+  "sorties_mesurees_a_150": 0
+ },
+ "semaine": {
+  "courses": 0,
+  "gainages": 0,
+  "football": 0,
+  "cible": "2 courses + 1 gainage"
+ },
+ "semaines_completes_sur_12": 0,
+ "meteo": {
+  "matin_7h": null,
+  "soir_19h": null
+ },
+ "regles": [
+  {
+   "id": "nuit_courte",
+   "niveau": "orange",
+   "declenchee": false,
+   "texte": "Nuit non mesurée.",
+   "manque": "la nuit dernière"
+  },
+  {
+   "id": "nuits_courtes",
+   "niveau": "orange",
+   "declenchee": false,
+   "texte": "Aucune nuit mesurée sur 5.",
+   "manque": "les nuits des derniers jours"
+  },
+  {
+   "id": "vfc_baisse",
+   "niveau": "orange",
+   "declenchee": false,
+   "texte": "VFC : pas assez de nuits mesurées.",
+   "manque": "la VFC"
+  },
+  {
+   "id": "disponibilite",
+   "niveau": "orange",
+   "declenchee": false,
+   "texte": "Disponibilité non mesurée.",
+   "manque": "la disponibilité Garmin"
+  },
+  {
+   "id": "fc_repos_hausse",
+   "niveau": "orange",
+   "declenchee": false,
+   "texte": "FC de repos : pas assez de jours mesurés.",
+   "manque": "la FC de repos sur deux semaines"
+  },
+  {
+   "id": "ratio_haut",
+   "niveau": "orange",
+   "declenchee": false,
+   "texte": "Ratio de charge non mesuré.",
+   "manque": "le ratio de charge"
+  }
+ ],
+ "feu": "vert"
+}

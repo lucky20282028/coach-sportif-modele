@@ -1,0 +1,4 @@
+PLAN_JSON_START
+{"updated":"","meta":{"cycle":1,"week_in_cycle":1,"deload":false,"caps":[]},"entries":[
+]}
+PLAN_JSON_END
