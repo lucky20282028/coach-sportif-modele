@@ -1,8 +1,8 @@
-/* GÉNÉRÉ par depuis-plan.js le 11 octobre à 22:07 — ne pas modifier à la main. */
+/* GÉNÉRÉ par depuis-plan.js le 11 octobre à 22:15 — ne pas modifier à la main. */
 module.exports = {
  "plan": [],
  "today": "2026-10-11",
- "genere": "11 octobre à 22:07",
+ "genere": "11 octobre à 22:15",
  "semaines": 2,
  "parler": "https://claude.ai/project/01a02952-0b0a-7110-b754-aea8db34859c",
  "mot": "Ton coach s'installe : ton premier programme arrive dès la fin de l'installation.",
@@ -17,7 +17,7 @@ module.exports = {
  "motDate": null,
  "retours": [],
  "montre": [],
- "version": "2026-10-11T20:07:49.190Z",
+ "version": "2026-10-11T20:15:24.475Z",
  "sourcesEtat": null,
  "echeances": [],
  "retour": "/api/retour",
@@ -177,7 +177,7 @@ module.exports = {
    "soir_19h": null
   }
  },
- "motVu": "2026-10-11T20:07:49.190Z",
+ "motVu": "2026-10-11T20:15:24.475Z",
  "n3Date": null,
  "reaction": null
 };

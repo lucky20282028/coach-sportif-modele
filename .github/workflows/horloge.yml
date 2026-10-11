@@ -14,7 +14,28 @@ permissions:
   contents: read
 
 jobs:
+  # Rien ne tourne tant que le coach n'est pas installé (modèle tout juste copié) :
+  # pas d'échec ni d'e-mail avant l'installation.
+  installe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      ok: ${{ steps.v.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          sparse-checkout: |
+            commun
+            reglages
+      - id: v
+        run: |
+          if node commun/installation.mjs empreinte_cle >/dev/null 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "ok=false" >> "$GITHUB_OUTPUT"; echo "Coach pas encore installé : rien à faire (workflow « Installation »)."; fi
+
   deployer:
+    needs: installe
+    if: ${{ needs.installe.outputs.ok == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
