@@ -1,7 +1,8 @@
 /* Quelles notifications envoyer, et quand — logique pure, sans réseau.
    Utilisée par notifier.mjs (GitHub Actions), testée par banc-notifs.mjs.
 
-   Quatre notifications, chacune réglable depuis la page (réglages, L) :
+   Cinq notifications, chacune réglable depuis la page (réglages, L) :
+     coach   : le nouveau mot du coach (point du matin, débrief, programme, réponse à un message)
      seance  : « ton footing n'est pas fait », à l'heure choisie (17 h à 21 h)
      coucher : « au lit » vers 23 h, après une nuit courte
      modif   : le coach a modifié ta séance d'aujourd'hui ou de demain
@@ -11,14 +12,14 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const C = require("../app/core.js");
 
-export const PREFS_DEFAUT = { seance:true, heure:19, coucher:true, modif:true, montres:true };
+export const PREFS_DEFAUT = { coach:true, seance:true, heure:19, coucher:true, modif:true, montres:true };
 export const HEURES = [17, 18, 19, 20, 21];
 
 /* Préférences reçues de la page : tout ce qui n'est pas prévu est jeté. */
 export function prefsValides(p) {
   p = p && typeof p === "object" ? p : {};
   const b = (v, d) => typeof v === "boolean" ? v : d;
-  return { seance:b(p.seance, true), heure:HEURES.includes(p.heure) ? p.heure : 19, coucher:b(p.coucher, true), modif:b(p.modif, true), montres:b(p.montres, true) };
+  return { coach:b(p.coach, true), seance:b(p.seance, true), heure:HEURES.includes(p.heure) ? p.heure : 19, coucher:b(p.coucher, true), modif:b(p.modif, true), montres:b(p.montres, true) };
 }
 
 /* Heure de Paris d'un instant : { d:"AAAA-MM-JJ", min: minutes depuis minuit }. */
@@ -81,6 +82,25 @@ export function rappelModif({ ici, prefs, avant, apres }) {
   }
   if (!lignes.length) return null;
   return { titre:"Le coach a modifié ta séance", corps:lignes.join(". ") + ".", tag:"modif-" + ici.d };
+}
+
+/* 5. Le nouveau mot du coach, envoyé par la page dès sa publication : c'est LA notification
+   du coach (point du matin, débrief, programme du dimanche, réponse à un message). Une seule
+   fois par mot (motVu), jamais la nuit (23 h – 7 h : la page le montre au réveil), jamais
+   un mot de plus de 12 heures. Le texte : la consigne (le gras du mot), sinon sa première phrase. */
+const texte = h => String(h || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+const couper = (t, n) => t.length > n ? t.slice(0, n - 1).replace(/\s+\S*$/, "") + "…" : t;
+export function notifMot({ ici, prefs, mot, motVu, deja, maintenant }) {
+  if (!prefs.coach || !mot || !motVu || deja === motVu) return null;
+  if (ici.min < 7 * 60 || ici.min >= 23 * 60) return null;
+  if (maintenant - Date.parse(motVu) > 12 * 3600000) return null;
+  const gras = [...String(mot).matchAll(/<b>([\s\S]*?)<\/b>/gi)].map(m => texte(m[1])).filter(Boolean);
+  const corps = couper(gras.length ? gras.join(" ") : (texte(mot).match(/^.*?[.!?](\s|$)/) || [texte(mot)])[0].trim(), 230);
+  if (!corps) return null;
+  const dim = new Date(ici.d + "T12:00:00Z").getUTCDay() === 0;
+  const titre = ici.min < 11 * 60 ? "Le point du matin" : dim && ici.min >= 17 * 60 && ici.min < 20 * 60 ? "Ton programme de la semaine"
+    : ici.min >= 19 * 60 + 45 ? "Le débrief du soir" : "Le mot du coach";
+  return { titre, corps, tag:"mot-" + motVu };
 }
 
 /* 4. Une montre ne répond plus : seulement à la deuxième collecte en échec, une seule fois. */

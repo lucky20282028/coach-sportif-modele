@@ -95,7 +95,7 @@ const ra = await abonnement({ request:req("POST", jeton, { abonnement:sub, prefs
 const ja = await ra.json();
 const kva = [...envN.RETOURS.m.keys()];
 t("abonnement : enregistré sous push:", ra.status === 200 && kva.length === 1 && /^push:[0-9a-f]{16}$/.test(kva[0]), JSON.stringify(kva));
-t("abonnement : préférences nettoyées", JSON.stringify(ja.prefs) === JSON.stringify({ seance:true, heure:20, coucher:false, modif:true, montres:true }));
+t("abonnement : préférences nettoyées", JSON.stringify(ja.prefs) === JSON.stringify({ coach:true, seance:true, heure:20, coucher:false, modif:true, montres:true }));
 await abonnement({ request:req("POST", jeton, { abonnement:sub, prefs:{ heure:18 } }, "/api/abonnement"), env:envN });
 t("abonnement : le même iPhone met à jour, sans doublon", envN.RETOURS.m.size === 1 && JSON.parse([...envN.RETOURS.m.values()][0]).prefs.heure === 18);
 await abonnement({ request:req("DELETE", jeton, { endpoint:sub.endpoint }, "/api/abonnement"), env:envN });

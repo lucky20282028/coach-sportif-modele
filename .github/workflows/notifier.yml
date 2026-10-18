@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       type:
-        description: "horaire, test, modif ou montre"
+        description: "horaire, test, modif, montre, mot ou mot-force"
         required: false
         default: "horaire"
 

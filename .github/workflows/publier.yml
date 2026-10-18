@@ -122,6 +122,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
         run: node collecte/notifier.mjs modif
 
+      # Le nouveau mot du coach (point du matin, débrief, programme, réaction) part en
+      # notification de la page : c'est elle qui prévient, pas l'app Claude.
+      - name: Nouveau mot du coach ?
+        continue-on-error: true
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKER }}
+        run: node collecte/notifier.mjs mot
+
       # Les journaux d'Actions ne sont pas lisibles depuis les sessions du coach.
       # La fin du journal devient une annotation, lisible par l'API sans les journaux bruts.
       - name: Résumer l'échec

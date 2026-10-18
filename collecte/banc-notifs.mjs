@@ -1,5 +1,5 @@
 /* Banc des notifications : qui reçoit quoi, et quand.  node collecte/banc-notifs.mjs */
-import { prefsValides, paris, rappelSeance, rappelCoucher, rappelModif, signature, suiviMontre, PREFS_DEFAUT, rappelEntretien } from "./notifs.mjs";
+import { prefsValides, paris, rappelSeance, rappelCoucher, rappelModif, signature, suiviMontre, PREFS_DEFAUT, rappelEntretien, notifMot } from "./notifs.mjs";
 
 let ok = 0, ko = 0; const echecs = [];
 const t = (n, c, d) => { if (c) ok++; else { ko++; echecs.push(n + (d ? " → " + d : "")); } };
@@ -7,7 +7,7 @@ const P = Object.assign({}, PREFS_DEFAUT);
 const ici = (d, h, m) => ({ d, min:h * 60 + (m || 0) });
 
 /* Préférences et heure de Paris */
-t("préférences inconnues jetées, heure hors liste ramenée à 19 h", JSON.stringify(prefsValides({ heure:3, pirate:1, coucher:false })) === JSON.stringify({ seance:true, heure:19, coucher:false, modif:true, montres:true }));
+t("préférences inconnues jetées, heure hors liste ramenée à 19 h", JSON.stringify(prefsValides({ heure:3, pirate:1, coucher:false })) === JSON.stringify({ coach:true, seance:true, heure:19, coucher:false, modif:true, montres:true }));
 t("heure d'été : 16h55 UTC = 18h55 à Paris", paris(new Date("2026-10-06T16:55:00Z")).min === 18 * 60 + 55);
 t("heure d'hiver : 16h55 UTC = 17h55 à Paris", paris(new Date("2026-11-03T16:55:00Z")).min === 17 * 60 + 55);
 
@@ -76,6 +76,22 @@ t("revenue : l'état s'efface", suiviMontre(e.etat, "success").etat === null);
   t("en fin d'après-midi seulement", rappelEntretien({ ici:ici("2027-01-10", 22, 55), prefs:P, expirations:X }) === null);
   t("alertes de montre coupées : rien", rappelEntretien({ ici:ici("2027-01-10", 18, 55), prefs:Object.assign({}, P, { montres:false }), expirations:X }) === null);
   t("expiré : on le dit", /expiré/.test(rappelEntretien({ ici:ici("2027-02-03", 18, 55), prefs:P, expirations:X }).titre));
+}
+
+{ /* Le mot du coach part en notification de la page */
+  const P = PREFS_DEFAUT, maintenant = Date.parse("2026-10-19T05:31:00Z");
+  const mot = "Nuit de 7h10, jambes fraîches après le 15 km. <b>Lundi 19 : repos complet, marche 20 min si tu veux.</b>";
+  const m = notifMot({ ici:{ d:"2026-10-19", min:7 * 60 + 31 }, prefs:P, mot, motVu:"2026-10-19T05:30:00Z", deja:null, maintenant });
+  t("mot du matin : titre « Le point du matin », la consigne en gras pour texte", m && m.titre === "Le point du matin" && m.corps === "Lundi 19 : repos complet, marche 20 min si tu veux." && m.tag === "mot-2026-10-19T05:30:00Z", m);
+  t("même mot déjà envoyé : rien", notifMot({ ici:{ d:"2026-10-19", min:460 }, prefs:P, mot, motVu:"a", deja:"a", maintenant }) === null);
+  t("la nuit : rien (la page le montre au réveil)", notifMot({ ici:{ d:"2026-10-19", min:23 * 60 + 10 }, prefs:P, mot, motVu:"2026-10-19T21:00:00Z", deja:null, maintenant:Date.parse("2026-10-19T21:10:00Z") }) === null);
+  t("mot de plus de 12 h : rien", notifMot({ ici:{ d:"2026-10-19", min:600 }, prefs:P, mot, motVu:"2026-10-18T16:00:00Z", deja:null, maintenant }) === null);
+  t("désactivé dans les réglages : rien", notifMot({ ici:{ d:"2026-10-19", min:460 }, prefs:Object.assign({}, P, { coach:false }), mot, motVu:"b", deja:null, maintenant }) === null);
+  const s = notifMot({ ici:{ d:"2026-10-19", min:20 * 60 + 30 }, prefs:P, mot:"Ce qu'il faut retenir : sortie tenue au cœur. Suite demain.", motVu:"2026-10-19T18:28:00Z", deja:null, maintenant:Date.parse("2026-10-19T18:30:00Z") });
+  t("débrief sans gras : sa première phrase, titre du soir", s && s.titre === "Le débrief du soir" && s.corps === "Ce qu'il faut retenir : sortie tenue au cœur.", s);
+  const d = notifMot({ ici:{ d:"2026-10-18", min:18 * 60 + 2 }, prefs:P, mot:"<b>Semaine du 19 : récupération.</b>", motVu:"2026-10-18T16:00:00Z", deja:null, maintenant:Date.parse("2026-10-18T16:02:00Z") });
+  t("dimanche fin d'après-midi : « Ton programme de la semaine »", d && d.titre === "Ton programme de la semaine", d);
+  t("les anciennes préférences reçoivent le mot du coach par défaut", prefsValides({ seance:false }).coach === true);
 }
 console.log("\n  " + ok + " réussis, " + ko + " échoués");
 if (ko) { echecs.forEach(x => console.log("  ✗ " + x)); process.exit(1); }

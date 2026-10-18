@@ -27,14 +27,15 @@ fois. Sa procédure est dans `INSTALLER.md`.
 | Quand | Quoi |
 |---|---|
 | ~6h45 et ~20h15 | Collecte de tes montres et de ce que tu tapes sur la page, page régénérée et publiée |
-| 7h27 | Point du matin (notification Claude) : la nuit, la séance du jour, une consigne |
-| 20h23 | Débrief du soir |
-| Dimanche 17h54 | Bilan de la semaine et programme des 4 semaines suivantes (envoyé à ta montre si elle se programme) |
+| 7h27 | Point du matin, en notification de ton app : la nuit, la séance du jour, une consigne |
+| 20h23 | Débrief du soir, en notification |
+| Dimanche 17h54 | Bilan de la semaine et programme des 4 semaines suivantes (envoyé à ta montre si elle se programme), en notification |
 | Quand tu écris au coach ou appuies sur Actualiser | Collecte immédiate ; le coach relit et réécrit son mot |
-| Fin d'après-midi et soir | Notifications de la page : séance pas faite, « au lit » après une nuit courte, séance modifiée, montre déconnectée, jeton qui va expirer |
+| Fin d'après-midi et soir | Autres notifications de l'app : séance pas faite, « au lit » après une nuit courte, séance modifiée, montre déconnectée, jeton qui va expirer |
 | Chaque lundi | Diagnostic de l'installation (`etat/diagnostic.json`) |
 
-Les heures sont tenues par une horloge Cloudflare (`horloge/`) : les tâches planifiées de
+Toutes les notifications viennent de **ton app** (aucune de Claude), réglables dans
+Réglages › Notifications ; rien n'est envoyé entre 23 h et 7 h. Les heures sont tenues par une horloge Cloudflare (`horloge/`) : les tâches planifiées de
 GitHub, elles, partent souvent avec des heures de retard.
 
 ## Tes sources de données
@@ -93,6 +94,9 @@ lit `etat/diagnostic.json` et te dit quoi faire, point par point. Les cas couran
   (mets à jour `GARMIN_MOT_DE_PASSE`).
 - **Le coach ne relit pas quand tu écris** : jeton de la routine Réagir à recréer
   (`COACH_REAGIR_JETON`).
+- **Plus de notifications** : Réglages › Notifications › Envoyer un test. Rien n'arrive :
+  demande au coach de lire le journal du workflow « Notifications » (code et raison du refus).
+  L'iPhone ne les autorise que depuis l'icône de l'écran d'accueil.
 - **Un jeton expire** : tu es prévenu un mois avant (notification) ; refais-le comme à
   l'installation et colle-le au même nom.
 - **Réinstaller ou réparer** : workflow « Installation » (sans risque, rien n'est recréé

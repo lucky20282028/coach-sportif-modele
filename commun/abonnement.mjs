@@ -15,5 +15,5 @@ export function validerAbonnement(b) {
   const p = b.prefs && typeof b.prefs === "object" ? b.prefs : {};
   const bo = (v, d) => typeof v === "boolean" ? v : d;
   return { ok:true, abonnement:{ endpoint:a.endpoint, keys:{ p256dh:k.p256dh, auth:k.auth } },
-           prefs:{ seance:bo(p.seance, true), heure:HEURES.includes(p.heure) ? p.heure : 19, coucher:bo(p.coucher, true), modif:bo(p.modif, true), montres:bo(p.montres, true) } };
+           prefs:{ coach:bo(p.coach, true), seance:bo(p.seance, true), heure:HEURES.includes(p.heure) ? p.heure : 19, coucher:bo(p.coucher, true), modif:bo(p.modif, true), montres:bo(p.montres, true) } };
 }

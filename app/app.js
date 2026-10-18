@@ -2484,7 +2484,7 @@ function ecranFin() {
    (collecte/notifier.mjs). iOS ne les permet qu'à la page ouverte depuis son
    icône sur l'écran d'accueil (iOS 16.4 ou plus récent).
    ========================================================================== */
-const NOTIFS_DEFAUT = { seance:true, heure:19, coucher:true, modif:true, montres:true };
+const NOTIFS_DEFAUT = { coach:true, seance:true, heure:19, coucher:true, modif:true, montres:true };
 const pushPossible = () => typeof navigator !== "undefined" && !!navigator.serviceWorker && typeof window !== "undefined" &&
   "PushManager" in window && "Notification" in window && typeof VAPID !== "undefined";
 const ecranAccueil = () => typeof navigator !== "undefined" && (navigator.standalone === true ||
@@ -2550,6 +2550,7 @@ function sectionNotifs(f) {
     };
     ligne("seance", "Séance pas faite", "à l'heure choisie ci-dessous");
     ligne("coucher", "« Au lit » après une nuit courte", "vers 23 h");
+    ligne("coach", "Le mot du coach", "point du matin, débrief, programme, réponses");
     ligne("modif", "Séance modifiée par le coach", "hors du point de 7h27");
     if (NOMS_SOURCES.length) ligne("montres", "Une montre ne répond plus", NOMS_SOURCES.join(" ou "));
     z.appendChild(g);

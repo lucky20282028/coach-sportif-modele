@@ -91,5 +91,7 @@ export async function envoyer(abonnement, message, cles, opt) {
     },
     body:corps
   });
+  /* En cas de refus, la raison donnée par le service (Apple : {"reason":"…"}) pour le journal. */
+  envoyer.raison = r.status >= 400 ? await r.text().catch(() => "") : "";
   return r.status;
 }

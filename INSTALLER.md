@@ -219,7 +219,13 @@ point rouge avec lui.
    sa clé toute seule). **Partager › Sur l'écran d'accueil › Ajouter.** C'est son app.
    Rappelle-lui de garder son lien personnel (étape 4 de la page de la clé) dans ses notes.
 2. Dans l'app, bouton **L** (réglages) :
-   - **Notifications** › activer (l'iPhone demande l'autorisation) ; heure du rappel.
+   - **Notifications** › activer (l'iPhone demande l'autorisation ; ça ne marche que depuis
+     l'icône de l'écran d'accueil, pas dans Safari) ; heure du rappel. **Toutes les
+     notifications du coach passent par là** : le mot du coach (point du matin, débrief,
+     programme du dimanche, réponses), la séance pas faite, « au lit », séance modifiée,
+     montre déconnectée, jeton qui expire. Fais-lui toucher **Envoyer un test** : la
+     notification doit arriver dans la minute. Sinon : lire l'annotation « Notifications (test) »
+     du workflow « Notifications », qui donne le code et la raison du refus.
    - **Montres et données** :
      - Strava → **Connecter Strava**, accepter (cocher « activités privées »).
      - Withings → **Reconnecter Withings**, accepter.
@@ -262,13 +268,17 @@ l'outil des tâches planifiées (`create_trigger`), fuseau Europe/Paris, en remp
 | Coach · Bilan du dimanche | `CRON_TZ=Europe/Paris 54 17 * * 0` | `taches/point-running-hebdo.md` |
 
 Chacune doit avoir accès au dépôt (son environnement Claude Code avec GitHub branché).
-Si l'outil n'est pas disponible dans cette session, guide-le pour les créer à la main sur
-**claude.ai/code/routines** (Nouvelle routine : nom, horaire, texte, dépôt).
+**Crée-les SANS notification Claude** (`notifications: {}`) : c'est l'app du coach qui
+prévient (le nouveau mot part en notification de la page dès sa publication). Sinon il
+recevrait tout en double. Si l'outil n'est pas disponible dans cette session, guide-le pour
+les créer à la main sur **claude.ai/code/routines** (Nouvelle routine : nom, horaire,
+texte, dépôt, notifications désactivées).
 
 **La 4ᵉ, « Coach · Réagir »** (le coach relit tout quand il écrit depuis la page) :
 1. Il la crée lui-même sur **claude.ai/code/routines** : nom `Coach · Réagir`, texte =
-   `taches/reagir.md`, son dépôt, **sans horaire** ; puis **Ajouter un déclencheur › API ›
-   Générer un jeton** (affiché une seule fois) → secret GitHub `COACH_REAGIR_JETON`.
+   `taches/reagir.md`, son dépôt, **sans horaire**, **notifications désactivées** ; puis
+   **Ajouter un déclencheur › API › Générer un jeton** (affiché une seule fois) → secret
+   GitHub `COACH_REAGIR_JETON`.
 2. Il te donne l'identifiant de la routine (dans l'adresse : `trig_…`, ce n'est pas un
    secret). Écris-le dans `reglages/installation.json` (`routine_reagir`), commit, push.
 3. Test : `gh api -X POST repos/DEPOT/actions/workflows/collecte.yml/dispatches -f ref=main -f 'inputs[raison]=test'`,
@@ -286,7 +296,8 @@ envoie à la montre si elle se programme. Vérifie que la page affiche le plan.
 1. Workflow « Diagnostic » → `etat/diagnostic.json` : tout en vert, sauf ce qui attend
    des données (première nuit, première séance).
 2. Récapitule-lui en 6 lignes : son app (sur l'écran d'accueil), ce qui arrive et quand
-   (point du matin 7h27, débrief 20h23, programme le dimanche à 17h54, notifications),
+   (point du matin 7h27, débrief 20h23, programme le dimanche à 17h54 — chacun arrive en
+   notification de son app, pas de Claude),
    comment te parler (bouton Parler, projet Claude), ce qui expire et quand (il sera
    prévenu), et que tout se répare en demandant « fais un diagnostic » au coach.
 3. Ne lui laisse aucune action en suspens sans la nommer.

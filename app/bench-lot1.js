@@ -459,7 +459,7 @@ t("l'autorisation est demandée une fois, dans le geste", demande === 1);
 t("abonnement avec la clé publique de la page (65 octets)", cleServeur && cleServeur.length === 65 && cleServeur[0] === 4, cleServeur && cleServeur.length);
 t("hors réseau dans le banc : on le dit franchement", /serveur n'a pas répondu/.test(txt(NA.doc.querySelector("#fc .envoi"))), txt(NA.doc.querySelector("#fc .envoi")));
 const bascules = () => NA.doc.querySelectorAll("#fc .bascule");
-eq("une fois abonné : quatre interrupteurs", bascules().length, 4);
+eq("une fois abonné : cinq interrupteurs (dont le mot du coach)", bascules().length, 5);
 t("tous activés par défaut", bascules().every(b => b._cls.has("on")));
 t("heure du rappel : 19 h par défaut", NA.doc.querySelectorAll("#fc .notifs .seg button").find(b => b._cls.has("on")).dataset.h === "19");
 await bascules()[1].onclick(); await attendre();
